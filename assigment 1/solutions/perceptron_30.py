@@ -19,6 +19,7 @@ class Perceptron:
 
     def __init__(self, lr=0.5, epochs=100):
         """
+        
         Initializes the Perceptron object.
 
         Parameters:
@@ -40,9 +41,14 @@ class Perceptron:
         numpy.ndarray: Class labels.
         """
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        # raise NotImplementedError("Provide your solution here")
+        z = np.dot(self.w.T, X)
+        predictions = 2 * np.heaviside(z,1) - 1
+        
+        return predictions
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
+    
     def fit(self, X, y):
         """
         Trains the Perceptron on the given input vectors and labels.
@@ -71,7 +77,7 @@ class Perceptron:
         # Empty list to store how many examples were
         # misclassified at every iteration.
         miss_classifications = []
-
+        
         # Training.
         for epoch in trange(self.epochs):
 
@@ -80,15 +86,17 @@ class Perceptron:
             wrong_prediction_indices = np.nonzero(error)[0]
 
             # print(predictions)
-            if (predictions == 0).all():
+            if (error == 0).all():
                 print(f"No errors after {epoch} epochs. Training successful!")
             else:
                 # sample one wrong prediction at random
                 wrong_prediction_idx = np.random.choice(wrong_prediction_indices)
                 prediction_for_update = self.forward(X[wrong_prediction_idx, :])
                 # update the weights of the perceptron at random
-                # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-                raise NotImplementedError("Provide your solution here")
+                # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)****
+                
+                self.w = self.w + self.lr * (y[wrong_prediction_idx] - prediction_for_update) * X[wrong_prediction_idx]
+                #raise NotImplementedError("Provide your solution here")
                 # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
             # Appending number of misclassified examples
@@ -113,5 +121,9 @@ class Perceptron:
 
     
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        #raise NotImplementedError("Provide your solution here")
+        
+        y = self.forward(X.T)
+        
+        return y
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
