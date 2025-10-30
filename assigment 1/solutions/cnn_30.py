@@ -2,7 +2,7 @@ import math
 import numpy as np
 from collections import OrderedDict
 
-from .mlp import MultiLayerPerceptron, ACT_FUNCS, act_forward, act_backward, fc_backward
+from .mlp_30 import MultiLayerPerceptron, ACT_FUNCS, act_forward, act_backward, fc_backward
 
 ########### TO-DO ###########
 # Implement the methods marked with "BEGINNING OF YOUR CODE" and "END OF YOUR CODE"
@@ -192,7 +192,40 @@ def _conv2d_forward(x, W, b, stride=1, pad=0):
     C_out, C_in, k, _ = W.shape
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    
+    # padding
+    xp, pad_config = _pad2d(x, pad)
+
+    # create a NxM matrix for convolution  
+    # each column represents a sliding window for a certain position per channel
+    # each channel position per column starts at (C_(in)*k*k/C_(in)-1) + i*k, where i is the number of channels.
+    # cols.shape = (C_in*k*k, H_out*W_out)
+    cols, idx, H_out, W_out = _im2col_from_padded(xp, k, stride) 
+
+    # create weight matrix for convolution
+    # each row is a kernal 
+    # W_row.shape = (C_out, C_in*k*k)
+    W_row = W.reshape(C_out, -1) 
+
+    out = W_row @ cols
+
+    out += b.reshape(-1,1)
+
+    out = out.reshape(C_out, H_out, W_out)
+
+    cache = {
+        'x_shape': x.shape,
+        'W': W,
+        'b': b,
+        'stride': stride,
+        'pad': pad,
+        'xp_shape': xp.shape,
+        'cols': cols,
+        'idx': idx,
+        'H_out': H_out,
+        'W_out': W_out
+    }
+
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return out, cache
@@ -251,7 +284,30 @@ def _conv2d_backward(dout, cache):
     idx = cache["idx"]
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    
+    C_out, H_out, W_out = dout.shape
+    C_out, C_in, k, _ = W.shape
+    
+    db = np.sum(dout, axis=(1, 2))
+
+    dout_flat = dout.reshape(C_out, -1)
+
+    
+    dW_row = dout_flat @ cols.T
+    
+    dW = dW_row.reshape(C_out, C_in, k, k)
+
+    W_row = W.reshape(C_out, -1)
+    
+    dcols = W_row.T @ dout_flat
+
+    dx_padded = _col2im_into_padded(dcols, xp_shape, idx)
+
+    if pad > 0:
+        dx = dx_padded[:, pad:-pad, pad:-pad]
+    else:
+        dx = dx_padded
+
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return dx.astype(np.float64), dW.astype(np.float64), db.astype(np.float64)
@@ -300,7 +356,30 @@ def _maxpool2d_forward(x, kernel=2, stride=2):
     C, H, W = x.shape
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    cols, idx, H_out, W_out = _im2col_from_padded(x, kernel, stride) 
+
+    window_size = kernel * kernel
+
+    cols_reshaped = cols.reshape(C, window_size, -1) # group by channel
+
+    max_idx = np.argmax(cols_reshaped, axis=1)
+
+    out_flat = np.max(cols_reshaped, axis=1)
+
+    out = out_flat.reshape(C, H_out, W_out)
+
+    cache = {
+        'x_shape': x.shape,
+        'kernel': kernel,
+        'stride': stride,
+        'cols': cols,
+        'cols_reshaped': cols_reshaped,
+        'idx': idx,
+        'max_idx': max_idx,
+        'H_out': H_out,
+        'W_out': W_out
+    }
+
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return out.astype(np.float64), cache
@@ -344,13 +423,30 @@ def _maxpool2d_backward(dout, cache):
     C, H, W = cache["x_shape"]
     kernel = cache["kernel"]
     stride = cache["stride"]
-    i, j, c = cache["idx"]
+    idx = cache["idx"]
     max_idx = cache["max_idx"]
     H_out = cache["H_out"]
     W_out = cache["W_out"]
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    cols_reshaped = cache["cols_reshaped"]
+
+    window_size = kernel * kernel
+    
+    dout_flat = dout.reshape(C, -1)
+
+    dcols_reshaped = np.zeros_like(cols_reshaped)
+
+    c_indices = np.arange(C)[:, None]  # (C, 1)
+    
+    pos_indices = np.arange(H_out * W_out)[None, :]  # (1, H_out*W_out)
+    
+    dcols_reshaped[c_indices, max_idx, pos_indices] = dout_flat
+    
+    dcols = dcols_reshaped.reshape(C * window_size, -1)
+
+    dx = _col2im_into_padded(dcols, (C, H, W), idx)
+
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return dx.astype(np.float64)
