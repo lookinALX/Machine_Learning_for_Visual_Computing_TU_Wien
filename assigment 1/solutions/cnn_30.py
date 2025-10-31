@@ -288,21 +288,31 @@ def _conv2d_backward(dout, cache):
     C_out, H_out, W_out = dout.shape
     C_out, C_in, k, _ = W.shape
     
-    db = np.sum(dout, axis=(1, 2))
+    # https://www.youtube.com/watch?v=Lakz2MoHy6o --> formulas
 
-    dout_flat = dout.reshape(C_out, -1)
+    # biases
+    # dL/db_ij = dL/dy_ij * dy_ij/db_ij
+    # dy_ij/db_ij = 1 <-- y_ij = b_ij + K {сross-cor} X
+    db = np.sum(dout, axis=(1, 2))  
+    dout_flat = dout.reshape(C_out, -1) # each row gradient per channel
 
+    # weights
+    # y_ij = b_ij + K {сross-cor} X
+    # dL/dk_ij = sum(dL/dy_ij*x_ij)
+    # dL/dK = dL/dW = dL/dY {сross-cor} X 
+    dW_row = dout_flat @ cols.T 
+    dW = dW_row.reshape(C_out, C_in, k, k) # back to tensor
+    W_row = W.reshape(C_out, -1) # prep for the next step
     
-    dW_row = dout_flat @ cols.T
-    
-    dW = dW_row.reshape(C_out, C_in, k, k)
-
-    W_row = W.reshape(C_out, -1)
-    
+    # inputs
+    # forward --> y = W_row @ cols
+    # dL/dX = dL/d(cols) = sum(dL/dY * dY/d(cols))
+    # W_row = dY/d(cols)
+    # dout = dL/dY
     dcols = W_row.T @ dout_flat
-
     dx_padded = _col2im_into_padded(dcols, xp_shape, idx)
 
+    # delete padding if needed
     if pad > 0:
         dx = dx_padded[:, pad:-pad, pad:-pad]
     else:
@@ -356,14 +366,20 @@ def _maxpool2d_forward(x, kernel=2, stride=2):
     C, H, W = x.shape
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
+    
+    # create inout vector
     cols, idx, H_out, W_out = _im2col_from_padded(x, kernel, stride) 
 
+    # group by channel
+    # (C*k*k, H_out*W_out) -> (C, k*k, H_out*W_out)
     window_size = kernel * kernel
+    # each colom per channel is a "kernel window" 
+    cols_reshaped = cols.reshape(C, window_size, -1) 
 
-    cols_reshaped = cols.reshape(C, window_size, -1) # group by channel
-
+    # find max in each "kernel window" (each colom)
+    # max_idx.shape = (C, H_out*W_out) -> find max index
     max_idx = np.argmax(cols_reshaped, axis=1)
-
+    # find max value 
     out_flat = np.max(cols_reshaped, axis=1)
 
     out = out_flat.reshape(C, H_out, W_out)
@@ -429,20 +445,27 @@ def _maxpool2d_backward(dout, cache):
     W_out = cache["W_out"]
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    cols_reshaped = cache["cols_reshaped"]
 
+    cols_reshaped = cache["cols_reshaped"]
     window_size = kernel * kernel
     
+    # each row = gradients for one channel across all pooling windows
     dout_flat = dout.reshape(C, -1)
 
+    # create zero array matching forward's cols_reshaped
+    # shape: (C, window_size, H_out*W_out)
+    # will hold gradients for each position in each pooling window
     dcols_reshaped = np.zeros_like(cols_reshaped)
 
+    # for each window, only the max_idx position gets the gradient
     c_indices = np.arange(C)[:, None]  # (C, 1)
-    
     pos_indices = np.arange(H_out * W_out)[None, :]  # (1, H_out*W_out)
     
+    # this assigns gradient only to the position that was maximum in forward
     dcols_reshaped[c_indices, max_idx, pos_indices] = dout_flat
     
+    # reshape back to cols format: (C, window_size, H_out*W_out) -> (C*window_size, H_out*W_out)
+    # now matches the format expected by col2im
     dcols = dcols_reshaped.reshape(C * window_size, -1)
 
     dx = _col2im_into_padded(dcols, (C, H, W), idx)
